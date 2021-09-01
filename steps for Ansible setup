@@ -1,0 +1,155 @@
+Step 1: Create Ansible Windows User
+Create a new user for the Ansible windows connection setup.
+
+- Open Computer Management on your Windows system and go to Local Users and Groups.
+- Right-click on Users and create a new user.
+- Select Password never expires checkbox and click on create.
+- Now among the available groups, right-click on the Administrators group and click on properties.
+- Click on Add and enter ansible in object names.
+- Click on the check names option and then Ok.
+
+
+Step 2: Setup Libraries and WinRM
+
+- sudo apt-get update
+- sudo apt-get install gcc python-dev
+- sudo apt install python3-pip
+- sudo apt-get install python3-winrm
+
+
+Step 3: Update the Ansible Inventory file
+Now, I will create the ansible hosts file with the windows system IP address. So now ansible will know which windows system it needs to connect.
+
+- sudo vi /etc/ansible/hosts
+
+[win]
+192.168.0.5
+
+
+Step 4: Update the Ansible Group Variables
+
+Create a directory for putting variables need to connect to the windows system.
+
+- sudo mkdir /etc/ansible/group_vars
+- sudo chmod -R 777 /etc/ansible/
+
+Now, Create a file win.yaml and put the user details you created in the 1st step and few more variables required to connect to the windows system.
+
+- vi /etc/ansible/group_vars/win.yaml
+---
+
+ansible_user: ansible
+
+ansible_password: ansible
+
+ansible_connection: winrm
+
+ansible_winrm_server_cert_validation: ignore
+
+ansible_winrm_transport: basic
+
+ansible_winrm_port: 5985
+
+ansible_python_interpreter: C:\Users\<ubuntu_user>\AppData\Local\Programs\Python\Python37\python
+
+
+Step 5: Configure Windows Servers to Manage
+Open your windows power shell and upgrade it. You need to have Powershell 3.0 and .NET Framework 4.0 present on the windows machine.
+
+PS C:\WINDOWS\system32> $url = "https://raw.githubusercontent.com/jborean93/ansible-windows/master/scripts/Upgrade-PowerShell.ps1"
+PS C:\WINDOWS\system32> $file = "$env:temp\Upgrade-PowerShell.ps1"
+PS C:\WINDOWS\system32> $username = "ansible"
+PS C:\WINDOWS\system32> $password = "ansible"
+PS C:\WINDOWS\system32> (New-Object -TypeName System.Net.WebClient).DownloadFile($url, $file)
+PS C:\WINDOWS\system32> Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Force
+PS C:\WINDOWS\system32> &$file -Version 5.1 -Username $username -Password $password -Verbose
+
+To configure WinRM on a Windows system with ansible, a remote configuration script has been provided by ansible. Run the script in the PowerShell.
+
+PS C:\WINDOWS\system32> $url = "https://raw.githubusercontent.com/ansible/ansible/devel/examples/scripts/ConfigureRemotingForAnsible.ps1"
+PS C:\WINDOWS\system32> $file = "$env:temp\ConfigureRemotingForAnsible.ps1"
+PS C:\WINDOWS\system32> (New-Object -TypeName System.Net.WebClient).DownloadFile($url, $file)
+PS C:\WINDOWS\system32> powershell.exe -ExecutionPolicy ByPass -File $file
+PS C:\WINDOWS\system32> winrm enumerate winrm/config/Listener
+
+Listener
+Address = *
+Transport = HTTP
+Port = 5985
+Hostname = <windows_hostname>
+Enabled = true
+URLPrefix = wsman
+
+CertificateThumbprint
+ListeningOn = 127.0.0.1, 169.254.8.240, 169.254.36.9, 169.254.102.217, 169.254.215.170, 192.168.0.5, ::1, fe80::3131:c6d7:9ef5:8f0%7, fe80::51b7:9134:550d:d7aa%22, fe80::88f1:1229:e1dd:2409%16, fe80::99cf:5796:4f8e:f5c1%15, fe80::fd77:c19d:e0f2:66d9%9
+
+Listener
+Address = *
+Transport = HTTPS
+Port = 5986
+Hostname = <windows_hostname>
+Enabled = true
+URLPrefix = wsman
+
+CertificateThumbprint = C83B3FC8B274D0B650F0FD647DC7AC129BBE3FA0
+ListeningOn = 127.0.0.1, 169.254.8.240, 169.254.36.9, 169.254.102.217, 169.254.215.170, 192.168.0.5, ::1, fe80::3131:c6d7:9ef5:8f0%7, fe80::51b7:9134:550d:d7aa%22, fe80::88f1:1229:e1dd:2409%16, fe80::99cf:5796:4f8e:f5c1%15, fe80::fd77:c19d:e0f2:66d9%9
+
+
+Set winrm to allow HTTP traffic.
+
+PS C:\WINDOWS\system32> winrm set winrm/config/service '@{AllowUnencrypted="true"}'
+Service
+RootSDDL = O:NSG:BAD:P(A;;GA;;;BA)(A;;GR;;;IU)S:P(AU;FA;GA;;;WD)(AU;SA;GXGW;;;WD)
+
+MaxConcurrentOperations = 4294967295
+
+MaxConcurrentOperationsPerUser = 1500
+
+EnumerationTimeoutms = 240000
+MaxConnections = 300
+
+MaxPacketRetrievalTimeSeconds = 120
+AllowUnencrypted = true
+Auth
+Basic = true
+Kerberos = true
+Negotiate = true
+Certificate = false
+CredSSP = false
+
+CbtHardeningLevel = Relaxed
+DefaultPorts
+HTTP = 5985
+HTTPS = 5986
+IPv4Filter = *
+IPv6Filter = *
+
+EnableCompatibilityHttpListener = false
+
+EnableCompatibilityHttpsListener = false
+
+CertificateThumbprint
+AllowRemoteAccess = true
+
+
+Set the authentication to basic in wirm.
+
+PS C:\WINDOWS\system32> winrm set winrm/config/service/auth '@{Basic="true"}'
+Auth
+Basic = true
+Kerberos = true
+Negotiate = true
+Certificate = false
+CredSSP = false
+CbtHardeningLevel = Relaxed
+
+
+Step 6: Test Connectivity to the Windows Server
+Now all the steps on the machine are done. Go to ansible controller machine and ping the windows server machine using win_ping ansible module.
+
+#ansible win -m win_ping
+<Win_IP> | SUCCESS => {
+
+"changed": false,
+"ping": "pong"
+}
