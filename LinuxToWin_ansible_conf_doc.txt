@@ -1,0 +1,212 @@
+Step:1 Upgrade OS & Reboot
+       yum clean all
+       yum repolist; yum update -y
+       reboot
+
+Step:2 Install gcc, python-devel, python3-pip, telnet, wget, also check python version should be default 2.7
+       python --version
+       yum install gcc gcc-c++ python-devel
+       yum install python-dev
+       yum install python-devel
+       yum install python3-pip
+       python --version
+       yum install telnet wget
+
+Step:3 Now download and install python2-winrm manually
+       wget https://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/p/python2-winrm-0.3.0-1.el7.noarch.rpm
+       rpm -ivh python2-winrm-0.3.0-1.el7.noarch.rpm 
+       yum install python2-winrm-0.3.0-1.el7.noarch.rpm
+
+Step:4 Install ansible
+       yum install anisble
+
+Step:5 Insert windows hosts into /etc/ansible/hosts file
+	vi /etc/ansible/hosts 
+	[win]
+	10.0.0.7
+
+Step:6 Create group_var dir and win.yaml file
+       mkdir -p /etc/ansible/group_vars
+       chmod 777 ansible/ -R
+
+       vi ansible/group_vars/win.yaml (ansible_user, password should be windows machine)
+
+		---
+		ansible_user: ansible
+		ansible_password: Password!
+		ansible_connection: winrm
+		ansible_winrm_server_cert_validation: ignore
+		ansible_winrm_transport: basic
+
+Step:7 Now Windows side configuration -
+		A.	Check prerequisites versions -
+
+			1. Powershell 3.0 or later
+			2. .NET Framework 4.0 or later
+
+		B.	 Use below commands to check PS version and .net version 
+				a) PS C:\Users\ansible\Downloads> [System.Runtime.InteropServices.RuntimeEnvironment]::GetSystemVersion()
+				   v4.0.30319
+
+				b) PS C:\Users\ansible\Downloads> Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -recurse |
+				   >> Get-ItemProperty -name Version,Release -EA 0 |
+				   >> Where { $_.PSChildName -match '^(?!S)\p{L}'} |
+						   >> Select PSChildName, Version, Release
+
+					PSChildName Version   Release
+					----------- -------   -------
+					Client      4.8.04084  528372
+					Full         4.8.04084  528372
+					Client      4.0.0.0
+
+		C.	Now upgrade Powershell if not latest
+			PS C:\WINDOWS\system32> $url = "https://raw.githubusercontent.com/jborean93/ansible-windows/master/scripts/Upgrade-PowerShell.ps1"
+			PS C:\WINDOWS\system32> $file = "$env:temp\Upgrade-PowerShell.ps1"
+			PS C:\WINDOWS\system32> $username = "ansible"
+			PS C:\WINDOWS\system32> $password = "ansible"
+			PS C:\WINDOWS\system32> (New-Object -TypeName System.Net.WebClient).DownloadFile($url, $file)
+			PS C:\WINDOWS\system32> Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Force
+			PS C:\WINDOWS\system32> &$file -Version 5.1 -Username $username -Password $password -Verbose
+
+Step: 8 To configure WinRM on a Windows system with ansible, a remote configuration script has been provided by ansible. Run the script in the PowerShell
+
+			PS C:\WINDOWS\system32> $url = "https://raw.githubusercontent.com/ansible/ansible/devel/examples/scripts/ConfigureRemotingForAnsible.ps1"
+			PS C:\WINDOWS\system32> $file = "$env:temp\ConfigureRemotingForAnsible.ps1"
+			PS C:\WINDOWS\system32> (New-Object -TypeName System.Net.WebClient).DownloadFile($url, $file)
+			PS C:\WINDOWS\system32> powershell.exe -ExecutionPolicy ByPass -File $file
+			PS C:\WINDOWS\system32> winrm enumerate winrm/config/Listener
+
+				Listener
+				Address = *
+				Transport = HTTP
+				Port = 5985
+				Hostname
+				Enabled = true
+				URLPrefix = wsman
+
+				CertificateThumbprint
+				ListeningOn = 127.0.0.1, 169.254.8.240, 169.254.36.9, 169.254.102.217, 169.254.215.170, 192.168.0.102, ::1, fe80::3131:c6d7:9ef5:8f0%7, fe80::51b7:9134:550d:d7aa%22, fe80::88f1:1229:e1dd:2409%16, fe80::99cf:5796:4f8e:f5c1%15, fe80::fd77:c19d:e0f2:66d9%9
+
+				Listener
+				Address = *
+				Transport = HTTPS
+				Port = 5986
+				Hostname = DESKTOP-2L8QMI6
+				Enabled = true
+				URLPrefix = wsman
+
+				CertificateThumbprint = C83B3FC8B274D0B650F0FD647DC7AC129BBE3FA0
+				ListeningOn = 127.0.0.1, 169.254.8.240, 169.254.36.9, 169.254.102.217, 169.254.215.170, 192.168.0.102, ::1, fe80::3131:c6d7:9ef5:8f0%7, fe80::51b7:9134:550d:d7aa%22, fe80::88f1:1229:e1dd:2409%16, fe80::99cf:5796:4f8e:f5c1%15, fe80::fd77:c19d:e0f2:66d9%9
+
+Step:9 Set winrm to allow HTTP traffic
+
+			PS C:\WINDOWS\system32> winrm set winrm/config/service '@{AllowUnencrypted="true"}'
+				Service
+				RootSDDL = O:NSG:BAD:P(A;;GA;;;BA)(A;;GR;;;IU)S:P(AU;FA;GA;;;WD)(AU;SA;GXGW;;;WD)
+
+				MaxConcurrentOperations = 4294967295
+
+				MaxConcurrentOperationsPerUser = 1500
+
+				EnumerationTimeoutms = 240000
+				MaxConnections = 300
+
+				MaxPacketRetrievalTimeSeconds = 120
+				AllowUnencrypted = true
+				Auth
+				Basic = true
+				Kerberos = true
+				Negotiate = true
+				Certificate = false
+				CredSSP = false
+
+				CbtHardeningLevel = Relaxed
+				DefaultPorts
+				HTTP = 5985
+				HTTPS = 5986
+				IPv4Filter = *
+				IPv6Filter = *
+
+				EnableCompatibilityHttpListener = false
+
+				EnableCompatibilityHttpsListener = false
+
+				CertificateThumbprint
+				AllowRemoteAccess = true
+
+Step:10 Set the authentication to basic in wirm
+
+			PS C:\WINDOWS\system32> winrm set winrm/config/service/auth '@{Basic="true"}'
+				Auth
+				Basic = true
+				Kerberos = true
+				Negotiate = true
+				Certificate = false
+				CredSSP = false
+				CbtHardeningLevel = Relaxed
+
+
+Step:11 Ping test using win_ping module
+			   ansible win -m win_ping
+
+				[root@test-rhel group_vars]# ansible win -m win_ping
+				10.0.0.7 | SUCCESS => {
+					"changed": false, 
+					"ping": "pong"
+
+Step:12 Another test using ansible playbook - copy from C:\Users\ansible\Documents\abc.txt to C:\Users\ansible\Downloads\
+		   vi ansible/group_vars/copy.yaml
+		
+		---
+
+		- hosts: win
+
+		  tasks:
+
+		  - name: Copy File
+
+			win_copy:
+		
+			  src: C:\Users\ansible\Documents\abc.txt
+
+			  dest: C:\Users\ansible\Downloads\
+		 
+				  remote_src: yes
+
+Note: abc.txt file should be available at C:\Users\ansible\Documents\abc.txt or need to create
+   
+	[root@test-rhel group_vars]# ansible-playbook copy.yaml
+
+	PLAY [win] ********************************************************************************************************
+
+	TASK [Gathering Facts] ********************************************************************************************
+	ok: [10.0.0.7]
+
+	TASK [Copy File] **************************************************************************************************
+	changed: [10.0.0.7]
+
+	PLAY RECAP ********************************************************************************************************
+	10.0.0.7                   : ok=2    changed=1    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+
+
+Output: At windows system you will get abc.txt file under C:\Users\ansible\Downloads
+
+	PS C:\Users\ansible\Downloads> ls
+	PS C:\Users\ansible\Downloads> pwd
+
+	Path
+	----
+	C:\Users\ansible\Downloads
+
+
+	PS C:\Users\ansible\Downloads> ls
+
+
+	    Directory: C:\Users\ansible\Downloads
+
+
+	Mode                 LastWriteTime         Length Name
+	----                 -------------         ------ ----
+	-a----          9/3/2021   9:44 AM             27 abc.txt
+	
+Reference - https://geekflare.com/connecting-windows-ansible-from-ubuntu/
