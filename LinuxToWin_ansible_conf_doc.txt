@@ -209,4 +209,3 @@ Output: At windows system you will get abc.txt file under C:\Users\ansible\Downl
 	----                 -------------         ------ ----
 	-a----          9/3/2021   9:44 AM             27 abc.txt
 	
-Reference - https://geekflare.com/connecting-windows-ansible-from-ubuntu/
